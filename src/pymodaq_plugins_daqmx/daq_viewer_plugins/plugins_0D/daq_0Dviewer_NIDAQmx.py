@@ -1,4 +1,5 @@
 import numpy as np
+import traceback
 from pymodaq.utils.daq_utils import ThreadCommand
 from pymodaq.utils.data import DataWithAxes, DataToExport, DataSource, DataFromPlugins
 from pymodaq.control_modules.viewer_utility_classes import DAQ_Viewer_base, comon_parameters, main
@@ -17,7 +18,7 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
     live: bool
 
     params = comon_parameters+[
-        {'title': 'Display type:', 'name': 'display', 'type': 'list', 'limits': ['0D', '1D']},
+        {'title': 'Display type:', 'name': 'display', 'type': 'list', 'limits': ['0D', '1D', '2D']},
         {'title': 'Module ref. :', 'name': 'module', 'type': 'list', 'limits': DAQmx.get_NIDAQ_devices(),
          'value': DAQmx.get_NIDAQ_devices()[0]
          },
@@ -97,7 +98,8 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
             logger.info("Detected channels: {}".format(self.controller.channels))
             self.settings.child('channels').setValue(str(self.controller.channels))
         except Exception as err:
-            logger.error(err)
+            logger.error("Exception catched {}".format(err))
+            logger.error(traceback.format_exc())
             initialized = False
             info = "Error"
         return info, initialized
@@ -117,56 +119,24 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
         kwargs: dict
             others optionals arguments
         """
-        self.update_tasks()
+        if self.controller._task is None:
+            self.update_tasks()
 
-        data_from_task = self.controller._task.read()
-        logger.info("DATA = {}".format(data_from_task))
+        data_from_task = self.controller._task.read(self.settings.child('clock_settings', 'Nsamples').value())
+        logger.info("DATA TYPE= {}".format(type(data_from_task)))
+        logger.info("DATA LENGTH = {}".format(len(data_from_task)))
 
         self.emit_data(data_from_task)
 
     def emit_data(self, data_measurement):
-        logger.info("OOOOOOOOOOOOO {}".format([chan.name for chan in self.channels_ai]))
-        # dte = DataToExport(name='NIDAQmx',
-        #                    data=[DataFromPlugins(name='NI Analog Input 01',
-        #                                          data=[np.array([data_measurement[0]])],
-        #                                          # dim=f'Data{self.settings.child("display").value()}',
-        #                                          dim=f'Data0D',
-        #                                          labels=[self.channels_ai[0].name],
-        #                                          ),
-        #                          ])
+        logger.info("Channels names {}".format([chan.name for chan in self.channels_ai]))
         dte = DataToExport(name='NIDAQmx',
-                           data=[DataFromPlugins(name='NI Analog Input 02',
-                                                 data=[np.array([data_measurement[2]])],
-                                                 # dim=f'Data{self.settings.child("display").value()}',
-                                                 dim=f'Data0D',
-                                                 labels=[self.channels_ai[2].name],
+                           data=[DataFromPlugins(name='NI Analog Input 01',
+                                                 data=[np.array(data_measurement)],
+                                                 dim=f'Data{self.settings.child("display").value()}',
+                                                 labels=[self.channels_ai[0].name],
                                                  ),
                                  ])
-
-        # # Dictionary linking devices to channel's physical quantities
-        # self.dict_device_input = {self.controller.devices[1]: [self.channels_ai[0].name, self.channels_ai[1].name],
-        #                           self.controller.devices[3]: self.channels_ai[2].name}
-        # # self.controller.devices #ci_meas_types
-        # logger.info("DICT DEVICE LABEL {}".format(self.dict_device_input))
-        # logger.info(self.dict_device_input.get(self.controller.devices[1]))
-        # a = 0
-        # b = 0
-        # gen = [[ai for ai in self.dict_device_input.get(device)]
-        #        for device in self.dict_device_input if not isinstance(self.dict_device_input.get(device), str)] + \
-        #       [self.dict_device_input.get(device)
-        #        for device in self.dict_device_input if isinstance(self.dict_device_input.get(device), str)]
-        #
-        # logger.info("DATA TO EXPORT = {}".format(gen))
-        #
-        #
-        #
-        # dte = DataToExport(name='NIDAQmx',
-        #                    data=[DataFromPlugins(name=self.dict_device_input[device],
-        #                                          data=[np.array([data_measurement[i]])
-        #                                                for i in range(len(data_measurement))],
-        #                                          dim='Data0D',
-        #                                          labels=[ai for ai in self.dict_device_input.get(device)]
-        #                                          ) for device in self.dict_device_input])
         self.dte_signal.emit(dte)
 
     def stop(self):
@@ -187,26 +157,12 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
         Emit by mode (as for keithley) === by device
         
         '''
-        self.channels_ai = [AIThermoChannel(name="cDAQ1Mod1/ai0",
-                                            source='Analog_Input',
-                                            analog_type='Thermocouple',
-                                            value_min=-20.,
-                                            value_max=1300.,
-                                            thermo_type=DAQ_thermocouples.K,
-                                            ),
-                            AIThermoChannel(name="cDAQ1Mod1/ai1",
-                                            source='Analog_Input',
-                                            analog_type='Thermocouple',
-                                            value_min=-20.,
-                                            value_max=1300.,
-                                            thermo_type=DAQ_thermocouples.K,
-                                            ),
-                            AIChannel(name="cDAQ1Mod3/ai0",
+        self.channels_ai = [AIChannel(name="cDAQ1Mod3/ai0",
                                       source='Analog_Input',
                                       analog_type='Voltage',
                                       value_min=-10.,
                                       value_max=10.,
-                                      termination=DAQ_termination.Diff,
+                                      termination=DAQ_termination.RSE,
                                       ),
                             ]
         self.clock_settings_ai = ClockSettings(frequency=self.settings.child('clock_settings', 'frequency').value(),

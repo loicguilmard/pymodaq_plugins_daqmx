@@ -1,3 +1,5 @@
+import traceback
+
 from qtpy import QtWidgets, QtCore
 from qtpy.QtCore import Signal, QThread
 from pymodaq.utils.daq_utils import ThreadCommand, getLineInfo
@@ -6,6 +8,8 @@ import numpy as np
 from pymodaq.control_modules.viewer_utility_classes import DAQ_Viewer_base
 from pymodaq.control_modules.move_utility_classes import DAQ_Move_base
 from easydict import EasyDict as edict
+from pymodaq.utils.logger import set_logger, get_module_name
+logger = set_logger(get_module_name(__file__))
 
 from pymodaq.control_modules.viewer_utility_classes import comon_parameters as viewer_params
 from pymodaq.control_modules.move_utility_classes import comon_parameters_fun as actuator_params
@@ -13,7 +17,7 @@ from pymodaq.control_modules.move_utility_classes import comon_parameters_fun as
 from pymodaq.utils.parameter import Parameter
 from pymodaq.utils.parameter.pymodaq_ptypes import registerParameterType, GroupParameter
 
-from .daqmx import DAQmx, DAQ_analog_types, DAQ_thermocouples, DAQ_termination, Edge, DAQ_NIDAQ_source, \
+from .daqmxni import DAQmx, DAQ_analog_types, DAQ_thermocouples, DAQ_termination, Edge, DAQ_NIDAQ_source, \
     ClockSettings, AIChannel, Counter, AIThermoChannel, AOChannel, TriggerSettings, DOChannel, DIChannel
 
 
@@ -368,6 +372,7 @@ class DAQ_NIDAQmx_base(DAQmx):
                 self.settings.child('refresh_hardware').setValue(False)
 
         elif param.name() == 'ai_type':
+            logger.info("AITYPE **************************")
             param.parent().child('voltage_settings').show(param.value() == 'Voltage')
             param.parent().child('current_settings').show(param.value() == 'Current')
             param.parent().child('thermoc_settings').show(param.value() == 'Thermocouple')
@@ -392,9 +397,8 @@ class DAQ_NIDAQmx_base(DAQmx):
         self.trigger_settings = \
             TriggerSettings(trig_source=self.settings['trigger_settings', 'trigger_channel'],
                             enable=self.settings['trigger_settings', 'enable'],
-                            edge=self.settings['trigger_settings', 'edge'],
+                            edge=Edge[self.settings['trigger_settings', 'edge']],
                             level=self.settings['trigger_settings', 'level'],)
-
         if not not self.channels:
             super().update_task(self.channels, self.clock_settings, trigger_settings=self.trigger_settings)
 
@@ -409,20 +413,21 @@ class DAQ_NIDAQmx_base(DAQmx):
                                               source='Analog_Input', analog_type=analog_type,
                                               value_min=channel['voltage_settings', 'volt_min'],
                                               value_max=channel['voltage_settings', 'volt_max'],
-                                              termination=channel['termination'],))
+                                              termination=DAQ_termination[channel['termination']],))
                 elif analog_type == 'Current':
                     channels.append(AIChannel(name=channel.opts['title'],
                                               source='Analog_Input', analog_type=analog_type,
                                               value_min=channel['current_settings', 'curr_min'],
                                               value_max=channel['current_settings', 'curr_max'],
-                                              termination=channel['termination'], ))
+                                              termination=DAQ_termination[channel['termination']], ))
                 elif analog_type == 'Thermocouple':
                     channels.append(AIThermoChannel(name=channel.opts['title'],
-                                              source='Analog_Input', analog_type=analog_type,
-                                              value_min=channel['thermoc_settings', 'T_min'],
-                                              value_max=channel['thermoc_settings', 'T_max'],
-                                              termination=channel['termination'],
-                                              thermo_type=channel['thermoc_settings', 'thermoc_type'],))
+                                                    source='Analog_Input', analog_type=analog_type,
+                                                    value_min=channel['thermoc_settings', 'T_min'],
+                                                    value_max=channel['thermoc_settings', 'T_max'],
+                                                    termination=channel['termination'],
+                                                    thermo_type=DAQ_thermocouples[
+                                                        channel['thermoc_settings', 'thermoc_type']],))
 
         elif self.settings['NIDAQ_type'] == DAQ_NIDAQ_source(1).name:  # counter input
             for channel in self.settings.child('counter_settings', 'counter_channels').children():
@@ -470,7 +475,7 @@ class DAQ_NIDAQmx_Viewer(DAQ_Viewer_base, DAQ_NIDAQmx_base):
         refresh_hardware
     """
 
-    live_mode_available = True
+    live_mode_available = False
     params = viewer_params + DAQ_NIDAQmx_base.params
 
     def __init__(self, parent=None, params_state=None, control_type="0D"):
@@ -486,6 +491,7 @@ class DAQ_NIDAQmx_Viewer(DAQ_Viewer_base, DAQ_NIDAQmx_base):
         elif self.control_type == "Actuator":
             self.settings.child('NIDAQ_type').setLimits(['Analog_Output'])
 
+        self.settings.child('ao_settings').hide()
         self.settings.child('ao_channels').hide()
 
         #timer used for the counter
@@ -495,7 +501,7 @@ class DAQ_NIDAQmx_Viewer(DAQ_Viewer_base, DAQ_NIDAQmx_base):
 
     def stop(self):
         try:
-            self.controller['ai'].task.StopTask()
+            self.controller.task.StopTask()
         except:
             pass
         ##############################
@@ -535,29 +541,23 @@ class DAQ_NIDAQmx_Viewer(DAQ_Viewer_base, DAQ_NIDAQmx_base):
             --------
             daq_utils.ThreadCommand
         """
-        self.status.update(edict(initialized=False, info="", x_axis=None, y_axis=None, controller=None))
         try:
-            if self.settings['controller_status'] == "Slave":
-                if controller is None:
-                    raise Exception('no controller has been defined externally while this detector is a slave one')
-                else:
-                    self.controller = 'A Nidaqmx task'
-            else:
-                self.update_task()
+            self.controller = self.ini_detector_init(controller, DAQmx())
+            self.update_task()
 
             #actions to perform in order to set properly the settings tree options
             self.commit_settings(self.settings.child('NIDAQ_type'))
 
-            self.status.info = "Plugin Initialized"
-            self.status.initialized = True
-            self.status.controller = controller
-            return self.status
+            info = "Plugin Initialized"
+            initialized = True
+            return info, initialized
 
         except Exception as e:
+            logger.info(traceback.format_exc())
             self.emit_status(ThreadCommand('Update_Status', [str(e), 'log']))
-            self.status.info = str(e)
-            self.status.initialized = False
-            return self.status
+            info = str(e)
+            initialized = False
+            return info, initialized
 
     def grab_data(self, Naverage=1, **kwargs):
         """
@@ -574,13 +574,13 @@ class DAQ_NIDAQmx_Viewer(DAQ_Viewer_base, DAQ_NIDAQmx_base):
             --------
             DAQ_NIDAQ_source
         """
-        update = False
-        if 'live' in kwargs:
-            if kwargs['live'] != self.live:
-                update = True
-            self.live = kwargs['live']
-        if update:
-            self.update_task()
+        # update = False
+        # if 'live' in kwargs:
+        #     if kwargs['live'] != self.live:
+        #         update = True
+        #     self.live = kwargs['live']
+        # if update:
+        #     self.update_task()
 
         if self.settings['NIDAQ_type'] == DAQ_NIDAQ_source(0).name: #analog input
             if self.c_callback is None:
@@ -592,7 +592,7 @@ class DAQ_NIDAQmx_Viewer(DAQ_Viewer_base, DAQ_NIDAQmx_base):
 
     def emit_data(self, taskhandle, status, callbackdata):
         channels_name = [ch.name for ch in self.channels]
-
+        logger.info("channels_name {}".format(channels_name))
         data_tot = []
         data = self.readAnalog(len(self.channels), self.clock_settings)
         N = self.clock_settings.Nsamples
@@ -645,7 +645,7 @@ class DAQ_NIDAQmx_Actuator(DAQ_Move_base, DAQ_NIDAQmx_base):
                     'limits': ['Master', 'Slave']},
                    {'title': 'Axis:', 'name': 'axis', 'type': 'list', 'limits': stage_names},
 
-               ]}] + actuator_params
+               ]}]# + actuator_params
 
     def __init__(self, parent=None, params_state=None, control_type="Actuator"):
         DAQ_Move_base.__init__(self, parent, params_state)  # defines settings attribute and various other methods
