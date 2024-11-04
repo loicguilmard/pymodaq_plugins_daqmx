@@ -1,2 +1,61 @@
 title = 'Configuration file of the DAQmx plugin'
 
+[NIDAQ_Devices.cDAQ9174]
+title = "Configuration entry for a NIDAQmx devices"
+
+[NIDAQ_Devices.cDAQ9174.NI9205]
+title = "Module plugged in a NIDAQmx device"
+
+[NIDAQ_Devices.cDAQ9174.NI9205.ai.ai0]
+name = "cDAQ1Mod3/ai0"
+source = 'Analog_Input'
+analog_type = 'Voltage'
+value_min = -10
+value_max = 10
+termination = "RSE"
+
+[NIDAQ_Devices.cDAQ9174.NI9205.ai.ai1]
+name = "cDAQ1Mod3/ai1"
+source = 'Analog_Input'
+analog_type = 'Voltage'
+value_min = -10
+value_max = 10
+termination = "RSE"
+
+[NIDAQ_Devices.cDAQ9174.NI9205.ai.ai2]
+name = "cDAQ1Mod3/ai2"
+source = 'Analog_Input'
+analog_type = 'Voltage'
+value_min = -10
+value_max = 10
+termination = "RSE"
+
+[NIDAQ_Devices.cDAQ9174.NI9205.ai.ai3]
+name = "cDAQ1Mod3/ai3"
+source = 'Analog_Input'
+analog_type = 'Voltage'
+value_min = -10
+value_max = 10
+termination = "RSE"
+
+[NIDAQ_Devices.cDAQ9174.NI9205.ai.ai4]
+name = "cDAQ1Mod3/ai4"
+source = 'Analog_Input'
+analog_type = 'Voltage'
+value_min = -10
+value_max = 10
+termination = "RSE"
+
+[NIDAQ_Devices.cDAQ9174.NI9205.ai.ai5]
+name = "cDAQ1Mod3/ai5"
+source = 'Analog_Input'
+analog_type = 'Voltage'
+value_min = -10
+value_max = 10
+termination = "RSE"
+
+[NIDAQ_Devices.cDAQ9174.NI9211]
+title = "Module plugged in a NIDAQmx device"
+
+[NIDAQ_Devices.cDAQ9174.NI9217]
+title = "Module plugged in a NIDAQmx device"
