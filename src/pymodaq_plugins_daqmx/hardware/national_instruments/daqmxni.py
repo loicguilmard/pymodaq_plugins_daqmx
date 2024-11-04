@@ -398,41 +398,41 @@ class DAQmx:
             self._task = nidaqmx.Task()
             logger.info("TASK: {}".format(self._task))
             err_code = None
-            # logger.info("first {}".format(self._task.timing))
-            # logger.info("first stamp {}".format(nidaqmx.task.Timing.first_samp_timestamp_val))
 
             # create all channels one task for one type of channels
             for channel in channels:
                 if channel.source == 'Analog_Input':  # analog input
                     try:
                         if channel.analog_type == "Voltage":
-                            self._task.ai_channels.add_ai_voltage_chan(physical_channel=channel.name,
-                                                                       name_to_assign_to_channel="",
-                                                                       terminal_config=channel.termination,
-                                                                       min_val=-10.0,
-                                                                       max_val=10.0,
-                                                                       units=VoltageUnits.VOLTS,
-                                                                       custom_scale_name="")
+                            self._task.ai_channels.add_ai_voltage_chan(channel.name,
+                                                                       "",
+                                                                       channel.termination,
+                                                                       channel.value_min,
+                                                                       channel.value_max,
+                                                                       VoltageUnits.VOLTS,
+                                                                       "")
 
                         elif channel.analog_type == "Current":
-                            self._task.ai_channels.add_ai_current_chan(channel.name, "",
-                                                                       DAQ_termination[channel.termination],
+                            self._task.ai_channels.add_ai_current_chan(channel.name,
+                                                                       "",
+                                                                       channel.termination,
                                                                        channel.value_min,
                                                                        channel.value_max,
                                                                        CurrentUnits.AMPS,
                                                                        CurrentShuntResistorLocation.INTERNAL,
-                                                                       0., None)
+                                                                       0.,
+                                                                       "")
 
                         elif channel.analog_type == "Thermocouple":
-                            self._task.ai_channels.add_ai_thrmcpl_chan(physical_channel=channel.name,
-                                                                       name_to_assign_to_channel="",
-                                                                       min_val=channel.value_min,
-                                                                       max_val=channel.value_max,
-                                                                       units=TemperatureUnits.DEG_C,
-                                                                       thermocouple_type=channel.thermo_type,
-                                                                       cjc_source=CJCSource.BUILT_IN,
-                                                                       cjc_val=0.,
-                                                                       cjc_channel="")
+                            self._task.ai_channels.add_ai_thrmcpl_chan(channel.name,
+                                                                       "",
+                                                                       channel.value_min,
+                                                                       channel.value_max,
+                                                                       TemperatureUnits.DEG_C,
+                                                                       channel.thermo_type,
+                                                                       CJCSource.BUILT_IN,
+                                                                       0.,
+                                                                       "")
                     except DaqError as e:
                         err_code = e.error_code
                     if not not err_code:
@@ -508,48 +508,47 @@ class DAQmx:
                         raise IOError(status)
 
             # configure the timing
-            # if clock_settings.repetition:
-            #     mode = AcquisitionType.CONTINUOUS
-            # else:
-            #     mode = AcquisitionType.FINITE
-            # if clock_settings.Nsamples > 1 and isinstance(err_code, type(None)):
-            #     try:
-            #         if isinstance(clock_settings, ClockSettings):
-            #             logger.info("daq error {}".format('clock'))
-            #             self._task.timing.cfg_samp_clk_timing(rate=clock_settings.frequency,
-            #                                                   source=clock_settings.source,
-            #                                                   active_edge=clock_settings.edge,
-            #                                                   sample_mode=mode,
-            #                                                   samps_per_chan=clock_settings.Nsamples)
-            #         elif isinstance(clock_settings, ChangeDetectionSettings):
-            #             logger.info("daq error {}".format('change'))
-            #             self._task.timing.cfg_change_detection_timing(rising_edge_chan=clock_settings.rising_channel,
-            #                                                           falling_edge_chan=clock_settings.falling_channel,
-            #                                                           sample_mode=mode,
-            #                                                           samps_per_chan=clock_settings.Nsamples)
-            #     except Exception as e:
-            #         logger.error("Exception catched: {}".format(e))
-            #         logger.error("Exception catched: {}".format(e))
-                    # err_code = e.error_code
-                # if not not err_code:
-                #     status = self.DAQmxGetErrorString(err_code)
-                #     # logger.error("Exception catched: {}".format(e))
-                #     logger.error(traceback.format_exc())
-                #     raise IOError(status)
+            if clock_settings.repetition:
+                mode = AcquisitionType.CONTINUOUS
+            else:
+                mode = AcquisitionType.FINITE
+            if clock_settings.Nsamples > 1 and isinstance(err_code, type(None)):
+                try:
+                    if isinstance(clock_settings, ClockSettings):
+                        logger.info("daq error {}".format('clock'))
+                        self._task.timing.cfg_samp_clk_timing(rate=clock_settings.frequency,
+                                                              source=clock_settings.source,
+                                                              active_edge=clock_settings.edge,
+                                                              sample_mode=mode,
+                                                              samps_per_chan=clock_settings.Nsamples)
+                    elif isinstance(clock_settings, ChangeDetectionSettings):
+                        logger.info("daq error {}".format('change'))
+                        self._task.timing.cfg_change_detection_timing(rising_edge_chan=clock_settings.rising_channel,
+                                                                      falling_edge_chan=clock_settings.falling_channel,
+                                                                      sample_mode=mode,
+                                                                      samps_per_chan=clock_settings.Nsamples)
+                except Exception as e:
+                    logger.error("Exception catched: {}".format(e))
+                    logger.error("Exception catched: {}".format(e))
+                    err_code = e.error_code
+                if not not err_code:
+                    status = self.DAQmxGetErrorString(err_code)
+                    # logger.error("Exception catched: {}".format(e))
+                    logger.error(traceback.format_exc())
+                    raise IOError(status)
 
             for channel in channels:
                 if not trigger_settings.enable:
+                    logger.info("Trigger settings disabled")
                     if channel.source == 'Counter':
                         pass  # Maybe here adding the configuration fastCTr0 with Ctr1 etc...?
                     else:
-                        logger.info("LA.....")
-
                         pass
                         # err = self._task.triggers.start_trigger.disable_start_trig()
                         # if err != 0:
                         #     raise IOError(self.DAQmxGetErrorString(err))
                 else:
-                    logger.info("ICI......")
+                    logger.info("Trigger settings enabled")
                     if 'PF' in trigger_settings.trig_source:
                         self._task.triggers.start_trigger.disable_start_trig()
                     elif 'ai' in trigger_settings.trig_source:
