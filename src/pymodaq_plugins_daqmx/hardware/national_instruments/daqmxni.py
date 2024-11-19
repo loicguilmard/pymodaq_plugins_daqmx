@@ -24,10 +24,10 @@ class DAQ_NIDAQ_source(IntEnum):
         =============== ==========
     """
     Analog_Input = 0
-    Counter = 1
-    Analog_Output = 2
-    Digital_Output = 3
-    Digital_Input = 4
+    Analog_Output = 1
+    Counter = 2
+    Digital_Input = 3
+    Digital_Output = 4
     Terminals = 5
 
     @classmethod
@@ -151,7 +151,7 @@ class ClockSettingsBase:
 
 
 class ClockSettings(ClockSettingsBase):
-    def __init__(self, source=None, frequency=1000, Nsamples=1000, edge=Edge.members()[0], repetition=False):
+    def __init__(self, source=None, frequency=1000, Nsamples=1000, edge=Edge.Rising, repetition=False):
         super().__init__(Nsamples, repetition)
         self.source = source
         assert edge in Edge.members()
@@ -168,7 +168,7 @@ class ChangeDetectionSettings(ClockSettingsBase):
 
 
 class TriggerSettings:
-    def __init__(self, trig_source='', enable=False, edge=Edge.members()[0], level=0.1):
+    def __init__(self, trig_source='', enable=False, edge=Edge.Rising, level=0.1):
         assert edge in Edge.members()
         self.trig_source = trig_source
         self.enable = enable
@@ -177,7 +177,7 @@ class TriggerSettings:
 
 
 class Channel:
-    def __init__(self, name='', source=DAQ_NIDAQ_source.names()[0]):
+    def __init__(self, name='', source=DAQ_NIDAQ_source.Analog_Input):
         """
         Parameters
         ----------
@@ -189,7 +189,7 @@ class Channel:
 
 
 class AChannel(Channel):
-    def __init__(self, analog_type=DAQ_analog_types.names()[0], value_min=-10., value_max=+10., **kwargs):
+    def __init__(self, analog_type=DAQ_analog_types.Voltage, value_min=-10., value_max=+10., **kwargs):
         """
         Parameters
         ----------
@@ -203,17 +203,14 @@ class AChannel(Channel):
 
 
 class AIChannel(AChannel):
-    def __init__(self, termination=DAQ_termination.members(), **kwargs):
+    def __init__(self, termination=DAQ_termination.Auto, **kwargs):
         super().__init__(**kwargs)
-        logger.info("AI chan ter{}".format(termination))
-        logger.info("AI chan ter{}".format(DAQ_termination.members()))
-        logger.info("AI chan ter{}".format(DAQ_termination.Diff))
         assert termination in DAQ_termination.members()
         self.termination = termination
 
 
 class AIThermoChannel(AIChannel):
-    def __init__(self, thermo_type=DAQ_thermocouples.members(), **kwargs):
+    def __init__(self, thermo_type=DAQ_thermocouples.K, **kwargs):
         super().__init__(**kwargs)
         assert thermo_type in DAQ_thermocouples.members()
         self.thermo_type = thermo_type
@@ -225,7 +222,7 @@ class AOChannel(AChannel):
 
 
 class Counter(Channel):
-    def __init__(self, edge=Edge.members()[0], **kwargs):
+    def __init__(self, edge=Edge.Rising, **kwargs):
         assert edge in Edge.members()
         super().__init__(**kwargs)
         self.edge = edge
@@ -295,9 +292,15 @@ class DAQmx:
             list of devices as strings to be used in subsequent commands
         """
         try:
-            devices = nidaqmx.system.System.local().devices.device_names
+            NIDAQ_devices = nidaqmx.system.System.local().devices
+            devices = NIDAQ_devices.device_names
             if devices == ['']:
-                devices = []
+                pass
+            else:
+                device_info = []
+                for device in NIDAQ_devices:
+                    device_info.append(device.name + ': ' + device.product_type)
+                    logger.info(device_info)
             return devices
         except DaqError as e:
             return e.error_code
@@ -335,10 +338,10 @@ class DAQmx:
                 for source in source_type:
                     if source == DAQ_NIDAQ_source['Analog_Input'].name:  # analog input
                         channels = Device(device).ai_physical_chans.channel_names
-                    elif source == DAQ_NIDAQ_source['Counter'].name:  # counter
-                        channels = Device(device).ci_physical_chans.channel_names
                     elif source == DAQ_NIDAQ_source['Analog_Output'].name:  # analog output
                         channels = Device(device).ao_physical_chans.channel_names
+                    elif source == DAQ_NIDAQ_source['Counter'].name:  # counter
+                        channels = Device(device).ci_physical_chans.channel_names
                     elif source == DAQ_NIDAQ_source['Digital_Output'].name:  # digital output
                         channels = Device(device).do_lines.channel_names
                     elif source == DAQ_NIDAQ_source['Digital_Input'].name:  # digital iutput
@@ -443,7 +446,7 @@ class DAQmx:
                     try:
                         if channel.counter_type == "Edge Counter":
                             self._task.ci_channels.add_ci_count_edges_chan(channel.name, "",
-                                                                           Edge[channel.edge], 0,
+                                                                           channel.edge, 0,
                                                                            CountDirection.COUNT_UP)
 
                         elif channel.counter_type == "Clock Output":
@@ -568,26 +571,12 @@ class DAQmx:
     def register_callback(self, callback, event='done', nsamples=1):
 
         if event == 'done':
-            self._task.register_done_event(Signal.SAMPLE_COMPLETE, callback)
+            self._task.register_done_event(callback)
             # NOT SURE HERE
         elif event == 'sample':
-            self._task.register_every_n_samples_acquired_into_buffer_event(1,
-                                                                           callback)
+            self._task.register_every_n_samples_acquired_into_buffer_event(1, callback)
         elif event == 'Nsamples':
-            self._task.register_every_n_samples_acquired_into_buffer_event(nsamples,
-                                                                           callback)
-    def readAnalog(self, Nchannels, clock_settings):
-        read = nidaqmx.int32()
-        N = clock_settings.Nsamples
-        data = np.zeros(N * Nchannels, dtype=np.float64)
-        timeout = N * Nchannels * 1 / clock_settings.frequency * 2  # set to twice the time it should take to acquire the data
-
-        self._task.ReadAnalogF64(N, timeout, nidaqmx.DAQmx_Val_GroupByChannel, data, len(data),
-                                 nidaqmx.byref(read), None)
-        if read.value == N:
-            return data
-        else:
-            raise IOError(f'Insufficient number of samples have been read:{read.value}/{N}')
+            self._task.register_every_n_samples_acquired_into_buffer_event(nsamples, callback)
 
     def readCounter(self):
         #    return 25

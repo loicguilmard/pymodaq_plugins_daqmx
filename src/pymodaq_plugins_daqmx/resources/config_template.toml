@@ -3,6 +3,28 @@ title = 'Configuration file of the DAQmx plugin'
 [NIDAQ_Devices.cDAQ9174]
 title = "Configuration entry for a NIDAQmx devices"
 
+[NIDAQ_Devices.cDAQ9174.NI9211]
+title = "Module plugged in a NIDAQmx device"
+
+[NIDAQ_Devices.cDAQ9174.NI9211.ai.ai0]
+name = "cDAQ1Mod1/ai0"
+source = 'Analog_Input'
+analog_type = 'Voltage'
+value_min = -10
+value_max = 10
+termination = "RSE"
+
+[NIDAQ_Devices.cDAQ9174.NI9211.ai.ai3]
+name = "cDAQ1Mod1/ai3"
+source = 'Analog_Input'
+analog_type = 'Voltage'
+value_min = -10
+value_max = 10
+termination = "RSE"
+
+[NIDAQ_Devices.cDAQ9174.NI9217]
+title = "Module plugged in a NIDAQmx device"
+
 [NIDAQ_Devices.cDAQ9174.NI9205]
 title = "Module plugged in a NIDAQmx device"
 
@@ -53,9 +75,3 @@ analog_type = 'Voltage'
 value_min = -10
 value_max = 10
 termination = "RSE"
-
-[NIDAQ_Devices.cDAQ9174.NI9211]
-title = "Module plugged in a NIDAQmx device"
-
-[NIDAQ_Devices.cDAQ9174.NI9217]
-title = "Module plugged in a NIDAQmx device"
