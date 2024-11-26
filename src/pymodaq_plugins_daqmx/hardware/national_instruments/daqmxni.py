@@ -255,6 +255,7 @@ class DAQmx:
     """Wrapper around the NIDAQmx package giving an easy to use object to instantiate channels and tasks"""
     def __init__(self):
         self.devices = []
+        self.devices_names = []
         self.channels = []
         self._device = None
         self._task = None
@@ -275,12 +276,13 @@ class DAQmx:
 
     @device.setter
     def device(self, device):
-        if device not in self.devices:
+        if device not in self.devices_names:
             raise IOError(f'your device: {device} is not known or connected')
         self._device = device
 
     def update_NIDAQ_devices(self):
-        self.devices = self.get_NIDAQ_devices()
+        self.devices = self.get_NIDAQ_devices()[0]
+        self.devices_names = self.get_NIDAQ_devices()[1]
 
     @classmethod
     def get_NIDAQ_devices(cls):
@@ -292,21 +294,15 @@ class DAQmx:
             list of devices as strings to be used in subsequent commands
         """
         try:
-            NIDAQ_devices = nidaqmx.system.System.local().devices
-            devices = NIDAQ_devices.device_names
+            devices = nidaqmx.system.System.local().devices
             if devices == ['']:
-                pass
-            else:
-                device_info = []
-                for device in NIDAQ_devices:
-                    device_info.append(device.name + ': ' + device.product_type)
-                    logger.info(device_info)
-            return devices
+                devices = []
+            return devices, devices.device_names
         except DaqError as e:
             return e.error_code
 
     def update_NIDAQ_channels(self, source_type=None):
-        self.channels = self.get_NIDAQ_channels(self.devices, source_type=source_type)
+        self.channels = self.get_NIDAQ_channels(self.devices_names, source_type=source_type)
 
     @classmethod
     def get_NIDAQ_channels(cls, devices=None, source_type=None):
@@ -325,7 +321,7 @@ class DAQmx:
 
         """
         if devices is None:
-            devices = cls.get_NIDAQ_devices()
+            devices = cls.get_NIDAQ_devices()[1]
 
         if source_type is None:
             source_type = DAQ_NIDAQ_source.names()
@@ -374,7 +370,7 @@ class DAQmx:
     def getTriggeringSources(cls, devices=None):
         sources = []
         if devices is None:
-            devices = cls.get_NIDAQ_devices()
+            devices = cls.get_NIDAQ_devices()[1]
 
         for device in devices:
             if cls.isDigitalTriggeringSupported(device):

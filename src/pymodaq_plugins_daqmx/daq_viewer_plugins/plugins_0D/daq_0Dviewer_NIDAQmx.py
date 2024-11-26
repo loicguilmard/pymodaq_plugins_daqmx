@@ -13,15 +13,21 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
     """
     Plugin for a 0D data visualization & acquisition with various NI modules plugged in a NI cDAQ.
     """
+    config_channels: list
     channels_ai: list
-    clock_settings_ai: str
-    dict_device_input: dict
+    clock_settings_ai: ClockSettings
+    config: config
+    controller: DAQmx
+    config_devices: list
+    config_modules: list
     live: bool
+
+    param_devices = DAQmx.get_NIDAQ_devices()[1]
 
     params = comon_parameters+[
         {'title': 'Display type:', 'name': 'display', 'type': 'list', 'limits': ['0D', '1D']},
-        {'title': 'Devices :', 'name': 'devices', 'type': 'list', 'limits': DAQmx.get_NIDAQ_devices(),
-         # 'value': DAQmx.get_NIDAQ_devices()[0]
+        {'title': 'Devices :', 'name': 'devices', 'type': 'list', 'limits': param_devices,
+         # 'value': param_devices[0]
          },
         {'title': 'Source :', 'name': 'source', 'type': 'list',
          'limits': DAQ_NIDAQ_source.names(),
@@ -29,36 +35,36 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
          },
         {'title': 'Channels:', 'name': 'channels', 'type': 'group', 'children': [
             {'title': 'Analog Input channels :', 'name': 'ai_channel', 'type': 'list',
-             'limits': DAQmx.get_NIDAQ_channels(source_type='Analog_Input'),
+             'limits': DAQmx.get_NIDAQ_channels(param_devices, source_type='Analog_Input'),
              },
             {'title': 'Analog Output channels :', 'name': 'ao_channel', 'type': 'list',
-             'limits': DAQmx.get_NIDAQ_channels(source_type='Analog_Output'),
+             'limits': DAQmx.get_NIDAQ_channels(param_devices, source_type='Analog_Output'),
              },
             {'title': 'Counter channels :', 'name': 'co_channel', 'type': 'list',
-             'limits': DAQmx.get_NIDAQ_channels(source_type='Counter'),
+             'limits': DAQmx.get_NIDAQ_channels(param_devices, source_type='Counter'),
              },
             {'title': 'Digital Input channels :', 'name': 'di_channel', 'type': 'list',
-             'limits': DAQmx.get_NIDAQ_channels(source_type='Digital_Input'),
+             'limits': DAQmx.get_NIDAQ_channels(param_devices, source_type='Digital_Input'),
              },
             {'title': 'Digital Output channels :', 'name': 'do_channel', 'type': 'list',
-             'limits': DAQmx.get_NIDAQ_channels(source_type='Digital_Output'),
+             'limits': DAQmx.get_NIDAQ_channels(param_devices, source_type='Digital_Output'),
              },
             {'title': 'Terminals channels :', 'name': 'te_channel', 'type': 'list',
-             'limits': DAQmx.get_NIDAQ_channels(source_type='Terminals'),
+             'limits': DAQmx.get_NIDAQ_channels(param_devices, source_type='Terminals'),
              },
         ]},
         {'title': 'Analog Type :', 'name': 'ai_type', 'type': 'list',
          'limits': DAQ_analog_types.names(),
          'value': DAQ_analog_types.names()[0]
          },
-        {'title': 'NSampleToRead', 'name': 'nsampletoread', 'type': 'int', 'value': 100, 'default': 100, 'min': 1},
+        {'title': 'NSampleToRead', 'name': 'nsampletoread', 'type': 'int', 'value': 1, 'default': 1, 'min': 1},
         {'title': 'Clock settings:', 'name': 'clock_settings', 'type': 'group', 'children': [
-            {'title': 'Frequency Acq.:', 'name': 'frequency', 'type': 'int', 'value': 100, 'min': 1},
-            {'title': 'Nsamples:', 'name': 'Nsamples', 'type': 'int', 'value': 100, 'default': 100, 'min': 1},
+            {'title': 'Frequency Acq.:', 'name': 'frequency', 'type': 'int', 'value': 1, 'min': 1},
+            {'title': 'Nsamples:', 'name': 'Nsamples', 'type': 'int', 'value': 1, 'default': 1, 'min': 1},
             {'title': 'Acquisition mode:', 'name': 'acqmode', 'type': 'list',
              'limits': ['Continuous', 'Finite'], 'value': 'Continuous'},
             {"title": "Counting channel:", "name": "counter_channel", "type": "list",
-             "limits": DAQmx.get_NIDAQ_channels(source_type="Counter")},
+             "limits": DAQmx.get_NIDAQ_channels(param_devices, source_type="Counter")},
         ]},
         ]
 
@@ -66,11 +72,12 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
         super().__init__(parent, params_state)
 
     def ini_attributes(self):
-        self.controller: DAQmx = None
+        self.config_channels = []
         self.channels_ai = []
-        self.clock_settings_ai = None
-        self.dict_device_input = None
+        self.config = config
+        self.config_devices = []
         self.live = False  # True during a continuous grab
+        self.config_modules = []
 
     def commit_settings(self, param: Parameter):
         """Apply the consequences of a change of value in the detector settings
@@ -82,6 +89,100 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
         """
         # if param.name() == "frequency":
         self.update_tasks()
+
+    def configuration_sequence(self, controller):
+        """Configure each devices / modules / channels as giver by the user in the configuration file
+
+        Read the .toml file to get the desired hardware configuration,
+        and send the nidaqmx a sequence which set up each channel.
+
+        :raises TypeError: Channel section of configuration file not correctly defined, each channel should be a dict
+        :raises ValueError: Channel not correctly defined, it should at least contain a key called "mode"
+        """
+        logger.info("********** CONFIGURATION SEQUENCE INITIALIZED **********")
+
+        devices_info = [dev.name + ': ' + dev.product_type for dev in controller.devices]
+        logger.info("Detected devices: {}".format(devices_info))
+        try:
+            for dev in self.config["NIDAQ_Devices"]:
+                if not isinstance(config["NIDAQ_Devices", dev], dict):
+                    continue
+                try:
+                    device_name = config["NIDAQ_Devices", dev].get('name')
+                    device_product = config["NIDAQ_Devices", dev].get('product')
+                    device = nidaqmx.system.device.Device(device_name)
+                    assert device in controller.devices and device.product_type == device_product, device.name
+                    self.config_devices.append(config["NIDAQ_Devices", dev].get('name'))
+                except AssertionError as err:
+                    logger.error("Device {} not detected: {}".format(device_name, err))
+                    continue
+                for mod in config["NIDAQ_Devices", dev]:
+                    if not isinstance(config["NIDAQ_Devices", dev, mod], dict):
+                        continue
+                    try:
+                        module_name = config["NIDAQ_Devices", dev, mod].get('name')
+                        module_product = config["NIDAQ_Devices", dev, mod].get('product')
+                        module = nidaqmx.system.device.Device(module_name)
+                        assert module in controller.devices and module.product_type == module_product, module.name
+                        self.config_modules.append(config["NIDAQ_Devices", dev, mod].get('name'))
+                    except AssertionError as err:
+                        logger.error("Module {} not detected: {}".format(module_name, err))
+                        continue
+                    for source in config["NIDAQ_Devices", dev, mod]:
+                        if not isinstance(config["NIDAQ_Devices", dev, mod, source], dict):
+                            continue
+                        if source == "ai":
+                            ai = config["NIDAQ_Devices", dev, mod, source]
+                            for ch in ai.keys():
+                                name = module_name + "/" + str(ch)
+                                term = ai[ch].get("termination")
+                                if ai[ch].get("analog_type") == "Voltage":
+                                    self.config_channels.append(AIChannel
+                                                                (name=name,
+                                                                 source=ai[ch].get("source"),
+                                                                 analog_type=ai[ch].get("analog_type"),
+                                                                 value_min=float(ai[ch].get("value_min")),
+                                                                 value_max=float(ai[ch].get("value_max")),
+                                                                 termination=DAQ_termination.__getitem__(term),
+                                                                 ))
+                                elif ai[ch].get("analog_type") == "Current":
+                                    self.config_channels.append(AIChannel
+                                                                (name=name,
+                                                                 source=ai[ch].get("source"),
+                                                                 analog_type=ai[ch].get("analog_type"),
+                                                                 value_min=float(ai[ch].get("value_min")),
+                                                                 value_max=float(ai[ch].get("value_max")),
+                                                                 termination=DAQ_termination.__getitem__(term),
+                                                                 ))
+                                elif ai[ch].get("analog_type") == "Thermocouple":
+                                    th = ai[ch].get("thermo_type")
+                                    self.config_channels.append(AIThermoChannel
+                                                                (name=name,
+                                                                 source=ai[ch].get("source"),
+                                                                 analog_type=ai[ch].get("analog_type"),
+                                                                 value_min=float(ai[ch].get("value_min")),
+                                                                 value_max=float(ai[ch].get("value_max")),
+                                                                 thermo_type=DAQ_thermocouples.__getitem__(th),
+                                                                 ))
+
+            self.clock_settings_ai = ClockSettings(frequency=self.settings.child('clock_settings', 'frequency').value(),
+                                                   Nsamples=self.settings.child('clock_settings', 'Nsamples').value(),
+                                                   edge=Edge.Rising,
+                                                   repetition=self.live)
+
+            self.controller.update_task(self.config_channels, self.clock_settings_ai)
+
+            logger.info("Devices from config: {}".format(self.config_devices))
+            logger.info("Modules from config: {}".format(self.config_modules))
+            logger.info("Channels from config: {}".format(self.config_channels))
+
+        except AssertionError as err:
+            logger.error("Configuration entries <{}> does not match the hardware ".format(err))
+        except Exception as err:
+            logger.info("Configuration sequence error, verify if your config matches the hardware: {}".format(err))
+            pass
+
+        logger.info("       ********** CONFIGURATION SEQUENCE SUCCESSFULLY ENDED **********")
 
     def ini_detector(self, controller=None):
         """Detector communication initialization
@@ -102,11 +203,11 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
 
         try:
             self.controller = self.ini_detector_init(controller, DAQmx())
-            self.update_tasks()
+            self.configuration_sequence(self.controller)
+            # self.update_tasks()
             initialized = True
             info = "DAQ_0D initialized"
-            self.controller.update_NIDAQ_devices()
-            self.controller.update_NIDAQ_channels()
+            logger.info("Detector 0D initialized")
         except Exception as err:
             logger.error("Exception catched {}".format(err))
             logger.error(traceback.format_exc())
