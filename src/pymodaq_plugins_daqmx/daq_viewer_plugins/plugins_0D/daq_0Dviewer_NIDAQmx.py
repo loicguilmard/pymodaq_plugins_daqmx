@@ -328,65 +328,68 @@ if __name__ == '__main__':
     else:
         try:
             print("In main")
-            import nidaqmx
+            import nidaqmx as ni
 
-            logger.info("DAQ Sources names{}".format(DAQ_NIDAQ_source.names()))
-            logger.info("DAQ Sources members{}".format(DAQ_NIDAQ_source.members()))
-            channels = [AIThermoChannel(name="cDAQ1Mod1/ai0",
-                                        source='Analog_Input',
-                                        analog_type='Thermocouple',
-                                        value_min=-80.0e-3,
-                                        value_max=80.0e-3,
-                                        termination='Diff',
-                                        thermo_type=DAQ_thermocouples.K),
-                       ]
-            # Create Task
-            print("DAQ_thermocouples.names ", DAQ_thermocouples.names())
-            print("DAQ_thermocouples.K ", nidaqmx.constants.ThermocoupleType.K)
-            print("DAQ_thermocouples.K type", type(nidaqmx.constants.ThermocoupleType.K))
-            print("DAQ_thermocouples.K ", DAQ_thermocouples.K)
-            print("DAQ_thermocouples.K type ", type(DAQ_thermocouples.K))
-            print("channel.thermo_type ", channels[0].thermo_type)
-            task = nidaqmx.Task()
-            for channel in channels:
-                task.ai_channels.add_ai_thrmcpl_chan(physical_channel=channel.name,
-                                                     # name_to_assign_to_channel="Channel 01",
-                                                     min_val=channel.value_min,
-                                                     max_val=channel.value_max,
-                                                     units=TemperatureUnits.DEG_C,
-                                                     thermocouple_type=channel.thermo_type,
-                                                     # cjc_source=CJCSource.BUILT_IN,
-                                                     # cjc_val="",
-                                                     # cjc_channel="",
-                                                     )
-            NIDAQ_Devices = nidaqmx.system.System.local().devices
+            # EXPLORE DEVICES
+            devices = ni.system.System.local().devices
+            chassis = devices[0]
+            mod1 = devices[0].chassis_module_devices[0]  # Equivalent devices[1]
+            mod2 = devices[2]
+            mod3 = devices[3]
+            usb1 = devices[4]
+            print("devices {}".format(devices))
+            print("devices names {}".format(devices.device_names))
+            print("devices types {}".format([dev.product_type for dev in devices]))
+            print("Module 01 on cDAQ chassis: {}".format(mod1.compact_daq_chassis_device.product_type))
+            print("USB 9211 MEAS TYPE: {}".format(usb1.ai_meas_types))
 
-            print("NIDAQ devices ", NIDAQ_Devices)
-            print("NIDAQ devices names ", NIDAQ_Devices.device_names)
-
-            Chassis = NIDAQ_Devices[0]
-            Module01 = NIDAQ_Devices[1]
-            Module02 = NIDAQ_Devices[2]
-            print("Chassis={}, Module01={}, Module02={}" .format(Chassis, Module01, Module02))
-
-            # Test resources
+            # TEST RESOURCES
             try:
-                Chassis.self_test_device()
-                Module01.self_test_device()
-                Module02.self_test_device()
+                for device in devices:
+                    device.self_test_device()
             except Exception as e:
                 print("Resources test failed: {}" .format(e))
 
-            print("Chassis: name={}, Num={}".format(Chassis.name, Chassis.product_type))
-            print("Module01: name={}, Num={}".format(Module01.name, Module01.product_type))
-            print("Module02: name={}, Num={}".format(Module02.name, Module02.product_type))
-
-            print("channel 01 name : ", channels[0].name)
-            data = task.read()
-            print("data = ", data)
-            print("type(data) = ", type(data))
-            print("type(data[0]) = ", type(data[0]))
-
+            # CREATE CHANNELS
+            channels_th = [AIThermoChannel(name="cDAQ1Mod1/ai0",
+                                           source='Analog_Input',
+                                           analog_type='Thermocouple',
+                                           value_min=-100,
+                                           value_max=1000,
+                                           thermo_type=DAQ_thermocouples.K),
+                           ]
+            # channels_voltage = [AIChannel(name="cDAQ1Mod1/ai0",
+            #                               source='Analog_Input',
+            #                               analog_type='voltage',
+            #                               value_min=-80.0e-3,
+            #                               value_max=80.0e-3,
+            #                               termination=DAQ_termination.Auto,
+            #                               ),
+            #                     ]
+            # CREATE TASK
+            task = nidaqmx.Task()
+            for channel in channels_th:
+                task.ai_channels.add_ai_thrmcpl_chan(channel.name,
+                                                     "",
+                                                     channel.value_min,
+                                                     channel.value_max,
+                                                     TemperatureUnits.DEG_C,
+                                                     channel.thermo_type,
+                                                     CJCSource.BUILT_IN,
+                                                     0.,
+                                                     "")
+            # for channel in channels_voltage:
+            #     task.ai_channels.add_ai_voltage_chan(channel.name,
+            #                                          "",
+            #                                          channel.termination,
+            #                                          channel.value_min,
+            #                                          channel.value_max,
+            #                                          VoltageUnits.VOLTS,
+            #                                          "")
+            task.timing.cfg_samp_clk_timing(5, None, nidaqmx.constants.Edge.RISING,
+                                            nidaqmx.constants.AcquisitionType.CONTINUOUS, 5)
+            data = task.read(50)
+            print(data)
             task.close()
 
         except Exception as e:
