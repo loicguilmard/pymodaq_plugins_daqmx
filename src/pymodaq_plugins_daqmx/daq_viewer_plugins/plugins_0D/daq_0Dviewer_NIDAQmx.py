@@ -289,14 +289,14 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
         # config_ai = config["NIDAQ_Devices", "cDAQ9174", "NI9205", "ai"]
         config_ai = config["NIDAQ_Devices", "cDAQ9174", "NI9211", "ai"]
         for AI in config_ai.keys():
+            term = config_ai[AI].get("termination")
             if config_ai[AI].get("analog_type") == "Voltage":
-                termination = config_ai[AI].get("termination")
                 self.channels_ai.append(AIChannel(name=config_ai[AI].get("name"),
                                                   source=config_ai[AI].get("source"),
                                                   analog_type=config_ai[AI].get("analog_type"),
                                                   value_min=float(config_ai[AI].get("value_min")),
                                                   value_max=float(config_ai[AI].get("value_max")),
-                                                  termination=DAQ_termination.__getitem__(termination),
+                                                  termination=DAQ_termination.__getitem__(term),
                                                   ))
             elif config_ai[AI].get("analog_type") == "Current":
                 self.channels_ai.append(AIChannel(name=config_ai[AI].get("name"),
@@ -304,16 +304,16 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
                                                   analog_type=config_ai[AI].get("analog_type"),
                                                   value_min=float(config_ai[AI].get("value_min")),
                                                   value_max=float(config_ai[AI].get("value_max")),
-                                                  termination=DAQ_termination.__getitem__(termination),
+                                                  termination=DAQ_termination.__getitem__(term),
                                                   ))
             elif config_ai[AI].get("analog_type") == "Thermocouple":
-                thermo_type = config_ai[AI].get("thermo_type")
+                th_type = config_ai[AI].get("thermo_type")
                 self.channels_ai.append(AIThermoChannel(name=config_ai[AI].get("name"),
                                                         source=config_ai[AI].get("source"),
                                                         analog_type=config_ai[AI].get("analog_type"),
                                                         value_min=float(config_ai[AI].get("value_min")),
                                                         value_max=float(config_ai[AI].get("value_max")),
-                                                        thermo_type=DAQ_thermocouples.__getitem__(thermo_type),
+                                                        thermo_type=DAQ_thermocouples.__getitem__(th_type),
                                                         ))
 
             logger.info(self.channels_ai[i].name for i in range(len(self.channels_ai)))
