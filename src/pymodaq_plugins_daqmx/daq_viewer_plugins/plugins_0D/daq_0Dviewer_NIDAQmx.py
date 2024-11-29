@@ -20,6 +20,7 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
     controller: DAQmx
     config_devices: list
     config_modules: list
+    current_device: nidaqmx.system.Device
     live: bool
 
     param_devices = DAQmx.get_NIDAQ_devices()[1]
@@ -27,7 +28,7 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
     params = comon_parameters+[
         {'title': 'Display type:', 'name': 'display', 'type': 'list', 'limits': ['0D', '1D']},
         {'title': 'Devices :', 'name': 'devices', 'type': 'list', 'limits': param_devices,
-         # 'value': param_devices[0]
+         'value': param_devices[0]
          },
         {'title': 'Source :', 'name': 'source', 'type': 'list',
          'limits': DAQ_NIDAQ_source.names(),
@@ -90,7 +91,7 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
         # if param.name() == "frequency":
         self.update_tasks()
 
-    def configuration_sequence(self, controller):
+    def configuration_sequence(self, controller, current_device):
         """Configure each devices / modules / channels as giver by the user in the configuration file
 
         Read the .toml file to get the desired hardware configuration,
@@ -100,19 +101,22 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
         :raises ValueError: Channel not correctly defined, it should at least contain a key called "mode"
         """
         logger.info("********** CONFIGURATION SEQUENCE INITIALIZED **********")
-
         devices_info = [dev.name + ': ' + dev.product_type for dev in controller.devices]
         logger.info("Detected devices: {}".format(devices_info))
         try:
-            for dev in self.config["NIDAQ_Devices"]:
+            self.config_devices = [config["NIDAQ_Devices", dev].get('name') for dev in self.config["NIDAQ_Devices"]
+                                   if not "Mod" in config["NIDAQ_Devices", dev].get('name')]
+            logger.info(self.config_devices)
+            for dev in config["NIDAQ_Devices"]:
                 if not isinstance(config["NIDAQ_Devices", dev], dict):
                     continue
                 try:
                     device_name = config["NIDAQ_Devices", dev].get('name')
+                    if not device_name == current_device.name:
+                        continue
                     device_product = config["NIDAQ_Devices", dev].get('product')
                     device = nidaqmx.system.device.Device(device_name)
                     assert device in controller.devices and device.product_type == device_product, device.name
-                    self.config_devices.append(config["NIDAQ_Devices", dev].get('name'))
                 except AssertionError as err:
                     logger.error("Device {} not detected: {}".format(device_name, err))
                     continue
@@ -173,8 +177,9 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
             self.controller.update_task(self.config_channels, self.clock_settings_ai)
 
             logger.info("Devices from config: {}".format(self.config_devices))
-            logger.info("Modules from config: {}".format(self.config_modules))
-            logger.info("Channels from config: {}".format(self.config_channels))
+            logger.info("Current device: {}".format(self.current_device))
+            logger.info("Current device modules from config: {}".format(self.config_modules))
+            logger.info("Current device channels from config: {}".format([ch.name for ch in self.config_channels]))
 
         except AssertionError as err:
             logger.error("Configuration entries <{}> does not match the hardware ".format(err))
@@ -202,8 +207,9 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
         logger.info("Detector 0D initialized")
 
         try:
+            self.current_device = nidaqmx.system.Device(self.settings["devices"])
             self.controller = self.ini_detector_init(controller, DAQmx())
-            self.configuration_sequence(self.controller)
+            self.configuration_sequence(self.controller, self.current_device)
             # self.update_tasks()
             initialized = True
             info = "DAQ_0D initialized"
