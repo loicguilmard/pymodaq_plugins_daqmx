@@ -204,7 +204,6 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
         initialized: bool
             False if initialization failed otherwise True
         """
-        logger.info("Detector 0D initialized")
 
         try:
             self.current_device = nidaqmx.system.Device(self.settings["devices"])
