@@ -327,7 +327,7 @@ class DAQ_0DViewer_NIDAQmx(DAQ_Viewer_base):
 
 if __name__ == '__main__':
     """Main section used during development tests"""
-    main_file = True
+    main_file = False
     if main_file:
         main(__file__)
     else:
@@ -335,18 +335,26 @@ if __name__ == '__main__':
             print("In main")
             import nidaqmx as ni
 
+            class Acquisition:
+                def __init__(self):
+                    self.counter = 0
+
+            acq = Acquisition()
+
             # EXPLORE DEVICES
             devices = ni.system.System.local().devices
-            chassis = devices[0]
-            mod1 = devices[0].chassis_module_devices[0]  # Equivalent devices[1]
-            mod2 = devices[2]
-            mod3 = devices[3]
-            usb1 = devices[4]
             print("devices {}".format(devices))
             print("devices names {}".format(devices.device_names))
             print("devices types {}".format([dev.product_type for dev in devices]))
-            print("Module 01 on cDAQ chassis: {}".format(mod1.compact_daq_chassis_device.product_type))
-            print("USB 9211 MEAS TYPE: {}".format(usb1.ai_meas_types))
+            cdaq = devices[0]
+            mod1 = cdaq.chassis_module_devices[0]  # Equivalent devices[1]
+            mod2 = devices[2]
+            mod3 = devices[3]
+            try:
+                usb1 = devices[4]
+            except Exception as e:
+                pass
+            print("cDAQ modules: {}".format(mod.compact_daq_chassis_device.product_type for mod in [mod1, mod2, mod3]))
 
             # TEST RESOURCES
             try:
@@ -363,39 +371,70 @@ if __name__ == '__main__':
                                            value_max=1000,
                                            thermo_type=DAQ_thermocouples.K),
                            ]
-            # channels_voltage = [AIChannel(name="cDAQ1Mod1/ai0",
-            #                               source='Analog_Input',
-            #                               analog_type='voltage',
-            #                               value_min=-80.0e-3,
-            #                               value_max=80.0e-3,
-            #                               termination=DAQ_termination.Auto,
-            #                               ),
-            #                     ]
+            channels_voltage = [AIChannel(name="cDAQ1Mod3/ai0",
+                                          source='Analog_Input',
+                                          analog_type='voltage',
+                                          value_min=-80.0e-3,
+                                          value_max=80.0e-3,
+                                          termination=DAQ_termination.Auto,
+                                          ),
+                                AIChannel(name="cDAQ1Mod3/ai1",
+                                          source='Analog_Input',
+                                          analog_type='voltage',
+                                          value_min=-80.0e-3,
+                                          value_max=80.0e-3,
+                                          termination=DAQ_termination.Auto,
+                                          ),
+                                ]
             # CREATE TASK
-            task = nidaqmx.Task()
+            task_9211 = nidaqmx.Task()
+            task_9205 = nidaqmx.Task()
+
+            def callback(task_handle, every_n_samples_event_type, number_of_samples, callback_data):
+
+                data9211 = task_9211.read(5)
+                data9205 = task_9205.read(5)
+                print(data9211)
+                print(data9205)
+
+                return 0
             for channel in channels_th:
-                task.ai_channels.add_ai_thrmcpl_chan(channel.name,
-                                                     "",
-                                                     channel.value_min,
-                                                     channel.value_max,
-                                                     TemperatureUnits.DEG_C,
-                                                     channel.thermo_type,
-                                                     CJCSource.BUILT_IN,
-                                                     0.,
-                                                     "")
-            # for channel in channels_voltage:
-            #     task.ai_channels.add_ai_voltage_chan(channel.name,
-            #                                          "",
-            #                                          channel.termination,
-            #                                          channel.value_min,
-            #                                          channel.value_max,
-            #                                          VoltageUnits.VOLTS,
-            #                                          "")
-            task.timing.cfg_samp_clk_timing(5, None, nidaqmx.constants.Edge.RISING,
-                                            nidaqmx.constants.AcquisitionType.CONTINUOUS, 5)
-            data = task.read(50)
-            print(data)
-            task.close()
+                task_9211.ai_channels.add_ai_thrmcpl_chan(channel.name,
+                                                          "",
+                                                          channel.value_min,
+                                                          channel.value_max,
+                                                          TemperatureUnits.DEG_C,
+                                                          channel.thermo_type,
+                                                          CJCSource.BUILT_IN,
+                                                          0.,
+                                                          "")
+            for channel in channels_voltage:
+                task_9205.ai_channels.add_ai_voltage_chan(channel.name,
+                                                          "",
+                                                          channel.termination,
+                                                          channel.value_min,
+                                                          channel.value_max,
+                                                          VoltageUnits.VOLTS,
+                                                          "")
+            task_9211.timing.cfg_samp_clk_timing(5.0, None, nidaqmx.constants.Edge.RISING,
+                                                 nidaqmx.constants.AcquisitionType.CONTINUOUS, 5)
+            task_9211.register_every_n_samples_acquired_into_buffer_event(10, callback)
+
+            task_9205.timing.cfg_samp_clk_timing(10, None, nidaqmx.constants.Edge.RISING,
+                                                 nidaqmx.constants.AcquisitionType.CONTINUOUS, 10)
+            task_9205.register_every_n_samples_acquired_into_buffer_event(2, callback)
+
+            task_9211.start()
+            task_9205.start()
+
+            print("Acquisition in progress... Press enter to stop")
+
+            # while not acq.counter > 10:
+            #     acq.counter += 1
+            input()
+
+            task_9211.close()
+            task_9205.close()
 
         except Exception as e:
             print("Exception ({}): {}".format(type(e), str(e)))
