@@ -19,8 +19,8 @@ class DAQ_1DViewer_NIDAQmx(DAQ_Viewer_base):
 
     params = comon_parameters+[
         {'title': 'Display type:', 'name': 'display', 'type': 'list', 'limits': ['1D']},
-        {'title': 'Module ref. :', 'name': 'module', 'type': 'list', 'limits': DAQmx.get_NIDAQ_devices(),
-         'value': DAQmx.get_NIDAQ_devices()[0]
+        {'title': 'Module ref. :', 'name': 'module', 'type': 'list', 'limits': DAQmx.get_NIDAQ_devices()[1],
+         'value': DAQmx.get_NIDAQ_devices()[1][0]
          },
         {'title': 'Devices', 'name': 'devices', 'type': 'text', 'value': ''},
         {'title': 'Channels', 'name': 'channels', 'type': 'text', 'value': ''},
@@ -93,8 +93,8 @@ class DAQ_1DViewer_NIDAQmx(DAQ_Viewer_base):
             info = "DAQ_1D initialized"
             self.controller.update_NIDAQ_devices()
             self.controller.update_NIDAQ_channels()
-            logger.info("Detected devices: {}".format(self.controller.devices))
-            self.settings.child('devices').setValue(str(self.controller.devices))
+            logger.info("Detected devices: {}".format(self.controller.devices_names))
+            self.settings.child('devices').setValue(str(self.controller.devices_names))
             logger.info("Detected channels: {}".format(self.controller.channels))
             self.settings.child('channels').setValue(str(self.controller.channels))
         except Exception as err:
